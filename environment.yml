@@ -1,0 +1,40 @@
+name: airchem
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+
+  # Core stack
+  - numpy
+  - pandas
+  - scipy
+  - scikit-learn
+  - matplotlib
+  - xarray
+  - h5py
+  - netcdf4
+
+  # Geospatial / atmospheric
+  - cartopy
+  - pyresample
+  - pygrib
+  - pyhdf
+
+  # ML and utilities
+  - pytorch
+  - pytorch-lightning
+  - lightgbm
+  - joblib
+  - cloudpickle
+  - opencv
+  - requests
+  - pytz
+  - zstandard
+  - ipython
+
+  # pip
+  - pip
+
+  - pip:
+      - adamp
+      - pydap
