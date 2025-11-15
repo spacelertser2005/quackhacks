@@ -1,156 +1,162 @@
-🚀 TEMPO Data Downloader & NetCDF → CSV Extractor (Talipa Supercomputer Version)
+# TEMPO NO₂ – Data Download and Preprocessing
 
-This script downloads TEMPO NO₂ Level-2 NetCDF granules from NASA Earthdata, extracts selected variables, writes them into a single CSV file, and automatically deletes the NetCDF files to save storage on the cluster.
+This repository contains a small utility script, `tempo_read_write.py`, that:
 
-This README tells you exactly how to run it on Talipa / any HPC Linux cluster.
+1. Logs in to NASA Earthdata (URS).
+2. Downloads a list of TEMPO NO₂ Level-2 NetCDF granules.
+3. Extracts a set of key variables from each file.
+4. Appends them to a single CSV file.
+5. Deletes the NetCDF files to conserve disk space on the cluster.
 
-1. Files Needed
+---
 
-Place these files in the same directory:
+## Getting started
+
+### 1. File layout
+
+Create a working directory on Talipa, for example:
+
+```bash
+mkdir -p ~/tempo/{tmp,csv}
+cd ~/tempo
+Place the following files in ~/tempo:
 
 tempo_read_write.py
+
 tempo_rows.txt
+
 secure.txt
 
-tempo_rows.txt
+tempo_rows.txt should contain one TEMPO NetCDF URL per line, e.g.:
 
-A list of TEMPO .nc URLs, one per line. Example:
-
+text
+Copy code
 https://data.asdc.earthdata.nasa.gov/.../TEMPO_NO2_L2_V03_20240301.nc
 https://data.asdc.earthdata.nasa.gov/.../TEMPO_NO2_L2_V03_20240301_2.nc
+secure.txt should store NASA Earthdata credentials (this file must not be committed to Git):
 
-secure.txt
-
-NASA Earthdata credentials (DO NOT COMMIT TO GIT):
-
-username=YOUR_EMAIL_HERE
+text
+Copy code
+username=YOUR_EARTHDATA_USERNAME
 password=YOUR_EARTHDATA_PASSWORD
+2. Adjust paths in the script (Linux vs Windows)
+On Talipa we use the local folders ./tmp and ./csv instead of Windows drives.
 
-2. Recommended Directory Structure (on Talipa)
-/home/<username>/tempo/
-├─ tempo_read_write.py
-├─ tempo_rows.txt
-├─ secure.txt
-├─ tmp/            # local temporary storage for NetCDFs
-└─ csv/            # output CSV written here
+In tempo_read_write.py, update the following lines:
 
-
-Inside the script, the default paths are:
-
-download_dir = '/tmp/'        # temporary location for .nc files
-extract_dir  = 'C:/tmp/'      # change this (see below)
-csv_output   = 'C:/csv/output.csv'  # change this (see below)
-
-
-On Talipa these MUST be changed to Linux paths.
-
-Change inside the Python code BEFORE running:
-
-Replace:
-
+python
+Copy code
+download_dir = '/tmp/'
+...
 extract_var_and_wr_csv('C:/tmp/', 'C:/csv/output.csv', row)
-tmp_dir = '/tmp/'
+Change them to:
 
-
-WITH (recommended for supercomputer):
-
+python
+Copy code
+download_dir = './tmp/'
+...
 extract_var_and_wr_csv('./tmp/', './csv/output.csv', row)
+In the helper that deletes files, also set:
+
+python
+Copy code
 tmp_dir = './tmp/'
+This keeps all intermediate files inside the ~/tempo directory.
 
-3. Load Required Modules on Talipa
+3. Python environment on Talipa
+Load system modules:
 
-Run these commands inside the HPC terminal:
-
+bash
+Copy code
 module load python/3.10
 module load hdf5
 module load netcdf
+Create and activate a virtual environment:
 
-4. Create Python Virtual Environment (HPC-safe)
-
-Run:
-
+bash
+Copy code
+cd ~/tempo
 python3 -m venv tempo_env
 source tempo_env/bin/activate
+Install required packages:
 
-
-Then install dependencies:
-
+bash
+Copy code
 pip install requests zstandard netCDF4 pandas joblib
+If zstandard fails to build wheels on the cluster, use:
 
-
-(If zstandard fails, use:)
-
+bash
+Copy code
 pip install --no-binary :all: zstandard
+Running the script
+From ~/tempo with the environment activated:
 
-5. Running the Script
-
-Activate the environment:
-
+bash
+Copy code
 source tempo_env/bin/activate
-
-
-Ensure the directories exist:
-
-mkdir -p tmp
-mkdir -p csv
-
-
-Run the script:
-
+mkdir -p tmp csv       # no-op if they already exist
 python tempo_read_write.py
-
-
 The script will:
 
-Log in to NASA Earthdata
+POST credentials in secure.txt to https://urs.earthdata.nasa.gov and obtain cookies.
 
-Download each .nc file listed in tempo_rows.txt
+Loop over each URL in tempo_rows.txt.
 
-Extract variables into csv/output.csv
+Download each NetCDF file into ./tmp.
 
-Delete .nc files after extraction
+For each .nc file, extract metadata and selected variables and append a row to ./csv/output.csv.
 
-6. CSV Output Format
+Delete the processed .nc files from ./tmp.
 
-The CSV will contain:
+Output
+The main output file is:
+
+text
+Copy code
+./csv/output.csv
+Each row corresponds to one TEMPO granule and contains:
 
 granule_id
-original_row
+
+original_row (original download URL)
+
 time_start
+
 time_end
+
 product
+
 location
+
 split
+
 granuleSize
+
 vertical_column_troposphere
+
 eff_cloud_fraction
+
 solar_zenith_angle
+
 viewing_zenith_angle
+
 surface_pressure
+
 terrain_height
+
 main_data_quality_flag
+
 ground_pixel_quality_flag
+
 fit_rms_residual
+
 amf_troposphere
 
+Optional: run as a Slurm job
+Create a Slurm script, for example tempo_job.slurm:
 
-Each row corresponds to one TEMPO granule.
-
-7. Notes for HPC Use
-✔ No GUI needed
-
-Runs fully in terminal.
-
-✔ Safe for temporary storage
-
-All .nc files are deleted after extraction.
-
-✔ Good for batch jobs
-
-You can submit using Slurm:
-
-Example tempo_job.slurm:
-
+bash
+Copy code
 #!/bin/bash
 #SBATCH -J tempo
 #SBATCH -o tempo.out
@@ -160,32 +166,49 @@ Example tempo_job.slurm:
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 
+module load python/3.10
+module load hdf5
+module load netcdf
+
+cd ~/tempo
 source tempo_env/bin/activate
 python tempo_read_write.py
+Submit with:
 
-
-Submit:
-
+bash
+Copy code
 sbatch tempo_job.slurm
+Troubleshooting
+Authentication errors (Bad Authentication)
 
-8. Troubleshooting
-❗ AUTHENTICATION FAILS (Bad Authentication)
+Re-check secure.txt (username and password).
 
-Check secure.txt
+Ensure the Earthdata account has accepted the EULA for the TEMPO product.
 
-NASA Earthdata password must be updated every 90 days
+Passwords expire periodically; update if needed.
 
-Ensure account has accepted the EULA for TEMPO dataset
+Empty or missing CSV output
 
-❗ CSV is empty
+Confirm tempo_rows.txt contains valid URLs.
 
-Make sure tmp/ and csv/ are used consistently
+Check that tmp/ and csv/ exist and paths in the script point to ./tmp/ and ./csv/output.csv.
 
-Ensure URLs in tempo_rows.txt are valid
+Import errors for netCDF4
 
-❗ netCDF4 import errors
+Make sure module load netcdf and module load hdf5 were run before activating the environment.
 
-Load modules:
+Reinstall netCDF4 if necessary inside the tempo_env environment.
 
-module load netcdf
-module load hdf5
+makefile
+Copy code
+::contentReference[oaicite:0]{index=0}
+
+
+
+
+
+
+
+
+
+C
